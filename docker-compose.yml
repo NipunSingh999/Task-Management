@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: taskflow_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: taskflow_db
+      POSTGRES_USER: taskflow_user
+      POSTGRES_PASSWORD: taskflow_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskflow_user -d taskflow_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    container_name: taskflow_web
+    restart: always
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py seed_demo_data &&
+             gunicorn taskflow.wsgi:application --bind 0.0.0.0:8000 --workers 3 --reload"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      DEBUG: "True"
+      SECRET_KEY: "django-insecure-taskflow-docker-secret-key-1234567890"
+      DATABASE_URL: "postgresql://taskflow_user:taskflow_password@db:5432/taskflow_db"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0,web"
+      ACCESS_TOKEN_LIFETIME_MINUTES: "60"
+      REFRESH_TOKEN_LIFETIME_DAYS: "7"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
